@@ -1,0 +1,44 @@
+{
+  "name": "aether-app",
+  "version": "1.0.0",
+  "description": "Generate HUD overlay from images and videos",
+  "main": "out/main/main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron-vite preview",
+    "dev": "electron-vite dev ",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false"
+  },
+  "repository": {
+    "type": "git",
+    "url": "aether-app"
+  },
+  "keywords": [
+    "HUD",
+    "overlay",
+    "reconstruct",
+    "3D"
+  ],
+  "author": "kaswa kelvin",
+  "license": "ISC",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.3.0",
+    "electron-vite": "^6.0.0",
+    "tailwindcss": "^4.3.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "^0.187.0"
+  }
+}

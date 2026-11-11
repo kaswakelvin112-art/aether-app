@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #05080f;
+  --color-panel: #0b1220;
+  --color-edge: #16314a;
+  --color-hud: #22e5ff;
+  --color-hud-dim: #0e7c86;
+  --color-warn: #ffb020;
+  --font-hud: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-void);
+}
+
+body {
+  overflow: hidden;
+}
