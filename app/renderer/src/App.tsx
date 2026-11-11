@@ -1,19 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import LeftSidebar, { type Source } from './components/leftSidebar'
 
-const RETICLES = ['3D HUD', 'Wire cube', '2D box'] as const
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-b border-edge p-4">
-      <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-hud-dim">{title}</h2>
-      {children}
-    </section>
-  )
-}
+const DEFAULT_IMAGE = 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg'
+const DEFAULT_VIDEO = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
 
 export default function App() {
-  const [alpha, setAlpha] = useState(0.15)
-  const [reticle, setReticle] = useState<(typeof RETICLES)[number]>('3D HUD')
+  const [source, setSource] = useState<Source>('Image')
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (mediaUrl) URL.revokeObjectURL(mediaUrl)
+    }
+  }, [mediaUrl])
+
+  const handleFileChange = (file: File | null) => {
+    if (mediaUrl) URL.revokeObjectURL(mediaUrl)
+    setMediaUrl(file ? URL.createObjectURL(file) : null)
+  }
+
+  const handleSourceChange = (nextSource: Source) => {
+    if (mediaUrl) URL.revokeObjectURL(mediaUrl)
+    setMediaUrl(null)
+    setSource(nextSource)
+  }
 
   return (
     <div className="grid h-full grid-cols-[320px_1fr] bg-void font-hud text-sm text-slate-200">
@@ -23,62 +33,39 @@ export default function App() {
           <h1 className="text-lg font-bold tracking-[0.3em] text-hud">AETHER-3D</h1>
           <p className="text-[11px] text-slate-500">{window.aether.platform}</p>
         </header>
-
-        <Panel title="Input feed">
-          <select className="w-full rounded border border-edge bg-void p-2">
-            <option>Webcam</option>
-            <option>Video file</option>
-            <option>Image</option>
-          </select>
-        </Panel>
-
-        <Panel title="Smoothing alpha">
-          <input
-            type="range"
-            min={0.01}
-            max={1}
-            step={0.01}
-            value={alpha}
-            onChange={(e) => setAlpha(Number(e.target.value))}
-            className="w-full accent-hud"
-          />
-          <p className="mt-1 text-hud">{alpha.toFixed(2)}</p>
-        </Panel>
-
-        <Panel title="Reticle mode">
-          <div className="grid grid-cols-3 gap-2">
-            {RETICLES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setReticle(r)}
-                className={`rounded border px-2 py-1.5 text-xs transition-colors ${
-                  reticle === r
-                    ? 'border-hud bg-hud/10 text-hud'
-                    : 'border-edge text-slate-400 hover:border-hud-dim'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel title="Live telemetry">
-          <dl className="grid grid-cols-2 gap-y-1 text-xs text-slate-400">
-            <dt>Track</dt><dd className="text-hud">--</dd>
-            <dt>Confidence</dt><dd className="text-hud">--</dd>
-            <dt>Detector FPS</dt><dd className="text-hud">--</dd>
-            <dt>Render FPS</dt><dd className="text-hud">--</dd>
-          </dl>
-        </Panel>
+        <LeftSidebar
+          source={source}
+          onSourceChange={handleSourceChange}
+          onFileChange={handleFileChange}
+        />
+        
       </aside>
 
       {/* B + C. Viewport (top) and capture panel (bottom) */}
       <main className="grid min-w-0 grid-rows-[1fr_220px]">
         <section className="relative overflow-hidden bg-black">
           {/* Layer 1: <video>. Layer 2: transparent WebGL canvas (Phase 3). */}
-          <div className="absolute inset-0 grid place-items-center text-slate-600">
-            video layer
+          <div className="absolute inset-0 grid place-items-center">
+            {source === 'Image' && (
+              <img
+                src={mediaUrl ?? DEFAULT_IMAGE}
+                alt="Selected source"
+                className="max-h-full max-w-full object-contain"
+              />
+            )}
+            {source === 'Video' && (
+              <video
+                src={mediaUrl ?? DEFAULT_VIDEO}
+                autoPlay
+                controls
+                loop
+                muted
+                className="max-h-full max-w-full"
+              />
+            )}
+            {source === 'Live' && (
+              <p className="text-slate-600">Camera input is not connected</p>
+            )}
           </div>
           <div className="pointer-events-none absolute inset-0 border border-hud/20">
             <span className="absolute left-3 top-3 text-[11px] tracking-[0.2em] text-hud">
