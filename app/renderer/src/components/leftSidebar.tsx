@@ -1,5 +1,6 @@
 
 import { useState } from "react";
+import MetaData from "./metaData";
 
 
 const reticles = ['3D HUD', 'Wire cube', '2D box'] as const
@@ -7,11 +8,12 @@ export type Source = 'Image' | 'Video' | 'Live'
 
 type LeftSidebarProps = {
     source: Source
+    file: File | null
     onSourceChange: (source: Source) => void
     onFileChange: (file: File | null) => void
 }
 
-const LeftSideBar = ({ source, onSourceChange, onFileChange }: LeftSidebarProps) => {
+const LeftSideBar = ({ source, file, onSourceChange, onFileChange }: LeftSidebarProps) => {
     const [alpha, setAlpha] = useState(0.15)
     const [reticle, setReticle] = useState<(typeof reticles)[number]>('3D HUD')
     const sourceFeed: Source[] = ['Image', 'Video', 'Live']
@@ -80,7 +82,7 @@ const LeftSideBar = ({ source, onSourceChange, onFileChange }: LeftSidebarProps)
                 </div>
             </Panel>
             <Panel title="Metadata">
-                <p className="text-xs text-slate-500">No metadata loaded</p>
+                <MetaData file={source === 'Live' ? null : file} />
             </Panel>
         </aside>
     );

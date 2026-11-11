@@ -6,6 +6,7 @@ const DEFAULT_VIDEO = 'https://interactive-examples.mdn.mozilla.net/media/cc0-vi
 
 export default function App() {
   const [source, setSource] = useState<Source>('Image')
+  const [file, setFile] = useState<File | null>(null)
   const [mediaUrl, setMediaUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -17,11 +18,13 @@ export default function App() {
   const handleFileChange = (file: File | null) => {
     if (mediaUrl) URL.revokeObjectURL(mediaUrl)
     setMediaUrl(file ? URL.createObjectURL(file) : null)
+    setFile(file)
   }
 
   const handleSourceChange = (nextSource: Source) => {
     if (mediaUrl) URL.revokeObjectURL(mediaUrl)
     setMediaUrl(null)
+    setFile(null)
     setSource(nextSource)
   }
 
@@ -35,6 +38,7 @@ export default function App() {
         </header>
         <LeftSidebar
           source={source}
+          file={file}
           onSourceChange={handleSourceChange}
           onFileChange={handleFileChange}
         />
