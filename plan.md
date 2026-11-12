@@ -40,7 +40,7 @@ Tasks:
   ├── package.json, pyproject.toml
   ```
 - Add tooling: ESLint/Prettier, Python ruff/black, pytest, Vite.
-- Pin versions: Electron (latest LTS), Three.js (r160+), Python 3.11, OpenCV 4.x, Open3D 0.18+, onnxruntime (CPU; GPU optional).
+- Pin versions: Electron (latest LTS), Three.js (r160+), Python 3.14.x, OpenCV 4.x, Open3D 0.18+, onnxruntime (CPU; GPU optional).
 - CI: lint + unit tests on push; build matrix for target OSes.
 
 **Deliverable:** `npm run dev` opens an empty Electron window; `python backend/server.py` starts and prints "ready".

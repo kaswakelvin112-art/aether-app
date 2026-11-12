@@ -11,11 +11,13 @@ export default function MetaData({ file }: { file: File | null }) {
   const [deepMetadata, setDeepMetadata] = useState<MediaMetadata | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showDeep, setShowDeep] = useState(false);
 
   useEffect(() => {
     setBasicMetadata(null);
     setDeepMetadata(null);
     setError(null);
+    setShowDeep(false);
     if (!file) return;
 
     setLoading(true);
@@ -27,8 +29,12 @@ export default function MetaData({ file }: { file: File | null }) {
       .finally(() => setLoading(false));
   }, [file]);
 
-  const loadDeepMetadata = async () => {
+  const handleToggleDeepMetadata = async () => {
     if (!file) return;
+    const nextShowDeep = !showDeep;
+    setShowDeep(nextShowDeep);
+    if (!nextShowDeep || deepMetadata) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -44,32 +50,48 @@ export default function MetaData({ file }: { file: File | null }) {
     }
   };
 
-  const metadata = { ...basicMetadata, ...deepMetadata };
+  const basicEntries = Object.entries(basicMetadata ?? {});
+  const deepEntries = Object.entries(deepMetadata ?? {}).filter(
+    ([label]) => !(label in (basicMetadata ?? {}))
+  );
 
   return (
     <div className="p-4 text-xs text-slate-400">
-        {!file && <p>No media selected</p>}
-        {loading && <p>Reading metadata...</p>}
-        {error && <p className="text-warn">{error}</p>}
-        {file && !loading && Object.entries(metadata).map(([label, value]) => (
-            value !== null && value !== undefined && (
-                <div key={label} className="flex justify-between gap-3">
-                    <span>{label}</span>
-                    <span className="text-right text-slate-200">{String(value)}</span>
-                </div>
-            )
+      {!file && <p>No media selected</p>}
+      {loading && <p>Reading metadata...</p>}
+      {error && <p className="text-warn">{error}</p>}
+      {file && !loading && basicEntries.map(([label, value]) => (
+        value !== null && value !== undefined && (
+          <div key={label} className="flex justify-between gap-3">
+            <span>{label}</span>
+            <span className="text-right text-slate-200">{String(value)}</span>
+          </div>
+        )
+      ))}
+      {file && !loading && basicEntries.length === 0 && !error && (
+        <p>No metadata found</p>
+      )}
+      <div className={`toggle-transition ${showDeep ? 'toggle-transition-open' : ''}`}>
+        <div className="min-h-0 overflow-hidden">
+            {file && !loading && deepEntries.map(([label, value]) => (
+          value !== null && value !== undefined && (
+            <div key={label} className="flex justify-between gap-3">
+              <span>{label}</span>
+              <span className="text-right text-slate-200">{String(value)}</span>
+            </div>
+          )
         ))}
-        {file && !loading && Object.keys(metadata).length === 0 && !error && (
-            <p>No metadata found</p>
-        )}
+        </div>
+      </div>
         <button
           type="button"
           hidden={!file}
-          disabled={!file || loading}
+          disabled={!file}
+        aria-expanded={showDeep}
           className="mt-2 rounded border border-hud px-3 py-1.5 text-xs text-hud hover:bg-hud/10 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={loadDeepMetadata}
+          onClick={handleToggleDeepMetadata}
         >
-          More
+          {showDeep ? "Less" : "More"}
         </button>
         </div>
   )

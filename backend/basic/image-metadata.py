@@ -11,4 +11,4 @@ def get_image_metadata(image_path):
         val = info.get(tag_id)
         print(f"{name}: {val}")
 
-get_image_metadata("/home/ph/Pictures/Camera/Photo from 2026-11-11 19-12-04.194131.jpeg")
+get_image_metadata("/home/ph/Downloads/jinx-arcane-league-3840x2160-9179.jpg")

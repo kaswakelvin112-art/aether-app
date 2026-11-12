@@ -21,3 +21,16 @@ body,
 body {
   overflow: hidden;
 }
+
+.toggle-transition {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  opacity: 0;
+  transition: grid-template-rows 300ms ease-out, opacity 300ms ease-out;
+}
+
+.toggle-transition-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}

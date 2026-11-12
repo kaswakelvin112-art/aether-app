@@ -4,6 +4,8 @@ import MetaData from "./metaData";
 
 
 const reticles = ['3D HUD', 'Wire cube', '2D box'] as const
+export const VARIANTS = ["original", "gray", "binary", "blur", "sobel"] as const
+export type ImageVariant = (typeof VARIANTS)[number]
 export type Source = 'Image' | 'Video' | 'Live'
 
 type LeftSidebarProps = {
@@ -11,9 +13,11 @@ type LeftSidebarProps = {
     file: File | null
     onSourceChange: (source: Source) => void
     onFileChange: (file: File | null) => void
+    variant: ImageVariant
+    onVariantChange: (variant: ImageVariant) => void
 }
 
-const LeftSideBar = ({ source, file, onSourceChange, onFileChange }: LeftSidebarProps) => {
+const LeftSideBar = ({ source, file, onSourceChange, onFileChange, variant, onVariantChange }: LeftSidebarProps) => {
     const [alpha, setAlpha] = useState(0.15)
     const [reticle, setReticle] = useState<(typeof reticles)[number]>('3D HUD')
     const sourceFeed: Source[] = ['Image', 'Video', 'Live']
@@ -64,6 +68,23 @@ const LeftSideBar = ({ source, file, onSourceChange, onFileChange }: LeftSidebar
                 />
                 <p className="mt-1 text-hud">{alpha.toFixed(2)}</p>
             </Panel>
+            {source === 'Image' && (<Panel title = "Variants">
+                <div className="grid grid-cols-3 gap-2">
+                    {VARIANTS.map((v) => (
+                    <button
+                        key={v}
+                        onClick={() => onVariantChange(v)}
+                        className={`cursor-pointer rounded border px-2 py-1.5 text-xs transition-colors ${
+                        variant === v
+                            ? 'border-hud bg-hud/10 text-hud'
+                            : 'border-edge text-slate-400 hover:border-hud-dim'
+                        }`}
+                    >
+                        {v}
+                    </button>
+                    ))}
+                </div>
+            </Panel>)}
             <Panel title="Reticle mode">
                 <div className="grid grid-cols-3 gap-2">
                     {reticles.map((r) => (
@@ -88,7 +109,7 @@ const LeftSideBar = ({ source, file, onSourceChange, onFileChange }: LeftSidebar
     );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+export function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="border-b border-edge p-4">
       <h2 className="mb-3 text-[11px] uppercase tracking-[0.2em] text-hud-dim">{title}</h2>

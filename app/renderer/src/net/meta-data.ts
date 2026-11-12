@@ -23,7 +23,7 @@ export function getBasicMediaMetadata({ file }: FileProp): Promise<MediaMetadata
       URL.revokeObjectURL(url);
       resolve({
         name: file.name,
-        sizeBytes: file.size,
+        sizeBytes: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
         type: file.type,
         width: img.naturalWidth,
         height: img.naturalHeight
@@ -48,7 +48,7 @@ function getBasicVideoMetadata(file: File): Promise<MediaMetadata> {
       URL.revokeObjectURL(url);
       resolve({
         name: file.name,
-        sizeBytes: file.size,
+        sizeBytes:  `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
         type: file.type,
         width: video.videoWidth,
         height: video.videoHeight,

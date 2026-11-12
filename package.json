@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "exifr": "^7.1.3",
-    "mediainfo.js": "^0.3.8"
-  }
-}

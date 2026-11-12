@@ -1,7 +1,10 @@
-import { app, BrowserWindow, session, shell } from 'electron'
-import { join } from 'node:path'
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {sidecar} from './sidecar'
 
 const LOG_TAG = '[AETHER:main]'
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -51,10 +54,23 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(permission === 'media')
     })
+
+    ipcMain.handle('sidecar:get-info', () => sidecar.getInfo())
+    sidecar.start()
+
     createWindow()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
+  })
+
+  // Stop the Python backend cleanly before the app exits.
+  let quitting = false
+  app.on('before-quit', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    quitting = true
+    void sidecar.stop().finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {
