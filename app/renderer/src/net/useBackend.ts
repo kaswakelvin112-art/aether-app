@@ -1,22 +1,42 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type LinkState = 'waiting' | 'connecting' | 'connected' | 'disconnected'
+
+export type ProcessImage = (imageBase64: string, variant: string) => Promise<string>
 
 export interface BackendStatus {
   link: LinkState
   sidecar: SidecarInfo | null
   latencyMs: number | null
   backendVersion: string | null
+  processImage: ProcessImage
 }
 
 const LOG_TAG = '[AETHER:net]'
 const PING_INTERVAL_MS = 1000
 const RECONNECT_DELAY_MS = 1000
+const PROCESS_TIMEOUT_MS = 30_000
 
 interface ServerMessage {
   type?: string
+  id?: string
   t?: number
   version?: string
+  image?: string
+  message?: string
+}
+
+interface PendingRequest {
+  resolve: (imageBase64: string) => void
+  reject: (error: Error) => void
+  timer: ReturnType<typeof setTimeout>
+}
+
+let requestCounter = 0
+
+function nextRequestId(): string {
+  requestCounter += 1
+  return `${Date.now().toString(36)}-${requestCounter.toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 export function useBackend(): BackendStatus {
@@ -24,6 +44,35 @@ export function useBackend(): BackendStatus {
   const [link, setLink] = useState<LinkState>('waiting')
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [backendVersion, setBackendVersion] = useState<string | null>(null)
+
+  const socketRef = useRef<WebSocket | null>(null)
+  const pendingRef = useRef<Map<string, PendingRequest>>(new Map())
+
+  const rejectPending = useCallback((error: Error) => {
+    for (const pending of pendingRef.current.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(error)
+    }
+    pendingRef.current.clear()
+  }, [])
+
+  const processImage = useCallback(async (imageBase64: string, variant: string): Promise<string> => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      throw new Error('backend is not connected')
+    }
+
+    const id = nextRequestId()
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (pendingRef.current.delete(id)) {
+          reject(new Error('image processing timed out'))
+        }
+      }, PROCESS_TIMEOUT_MS)
+      pendingRef.current.set(id, { resolve, reject, timer })
+      socket.send(JSON.stringify({ type: 'process-image', id, image: imageBase64, variant }))
+    })
+  }, [])
 
   // 1. Track what the Electron main process says about the Python sidecar.
   useEffect(() => {
@@ -51,7 +100,6 @@ export function useBackend(): BackendStatus {
     }
 
     let closed = false
-    let ws: WebSocket | null = null
     let pingTimer: ReturnType<typeof setInterval> | undefined
     let retryTimer: ReturnType<typeof setTimeout> | undefined
     let smoothed: number | null = null
@@ -60,14 +108,14 @@ export function useBackend(): BackendStatus {
       setLink('connecting')
       const socket = new WebSocket(`ws://127.0.0.1:${port}`)
       socket.binaryType = 'arraybuffer'
-      ws = socket
+      socketRef.current = socket
 
       socket.onopen = () => {
         socket.send(JSON.stringify({ type: 'hello', token }))
       }
 
       socket.onmessage = (ev: MessageEvent) => {
-        if (typeof ev.data !== 'string') return
+        if (closed || typeof ev.data !== 'string') return
         let msg: ServerMessage
         try {
           msg = JSON.parse(ev.data) as ServerMessage
@@ -89,12 +137,32 @@ export function useBackend(): BackendStatus {
           const rtt = performance.now() - msg.t
           smoothed = smoothed === null ? rtt : smoothed * 0.8 + rtt * 0.2
           setLatencyMs(smoothed)
+        } else if (msg.type === 'image_result' && typeof msg.id === 'string') {
+          const pending = pendingRef.current.get(msg.id)
+          if (!pending) return
+          pendingRef.current.delete(msg.id)
+          clearTimeout(pending.timer)
+          if (typeof msg.image === 'string') {
+            pending.resolve(msg.image)
+          } else {
+            pending.reject(new Error(msg.message ?? 'image processing failed'))
+          }
+        } else if (msg.type === 'image_error' && typeof msg.id === 'string') {
+          const pending = pendingRef.current.get(msg.id)
+          if (!pending) return
+          pendingRef.current.delete(msg.id)
+          clearTimeout(pending.timer)
+          pending.reject(new Error(msg.message ?? 'image processing failed'))
         }
       }
 
       socket.onclose = () => {
         clearInterval(pingTimer)
         if (closed) return
+        if (socketRef.current === socket) {
+          socketRef.current = null
+          rejectPending(new Error('backend disconnected'))
+        }
         console.warn(`${LOG_TAG} ⚠️ connection closed, retrying`)
         setLink('disconnected')
         setLatencyMs(null)
@@ -110,9 +178,12 @@ export function useBackend(): BackendStatus {
       closed = true
       clearInterval(pingTimer)
       clearTimeout(retryTimer)
-      ws?.close()
+      rejectPending(new Error('backend disconnected'))
+      const socket = socketRef.current
+      socketRef.current = null
+      socket?.close()
     }
-  }, [state, port, token])
+  }, [state, port, token, rejectPending])
 
-  return { link, sidecar, latencyMs, backendVersion }
+  return { link, sidecar, latencyMs, backendVersion, processImage }
 }

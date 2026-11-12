@@ -1,78 +1,68 @@
+"""Image variant processing for the AETHER-3D sidecar.
+
+Pure, UI-free helpers: the WebSocket server decodes an incoming image, calls
+apply_variant(), and encodes the result back to the renderer.
+"""
+from __future__ import annotations
+
 import cv2
 import numpy as np
 
-IMAGE_PATH = "./car.jpeg"
-VARIANTS = ["original", "gray", "binary", "blur", "sobel"]
-THUMB_SIZE = (96, 96)
+# Keep in sync with VARIANTS in app/renderer/src/components/leftSidebar.tsx.
+VARIANTS = ("original", "gray", "binary", "blur", "sobel")
+
+DEFAULT_PARAMS = {"binary": 128, "blur": 5, "sobel": 3}
 
 
-class ImageProcessor:
-    def __init__(self, root):
-        self.image = None
-        self.original_image = None
-        self.gray_image = None
-        self.binary_image = None
-        self.blur_image = None
-        self.sobel_image = None
+def decode_image(data: bytes) -> np.ndarray:
+    """Decode JPEG/PNG/WebP bytes into a BGR ndarray."""
+    encoded = np.frombuffer(data, dtype=np.uint8)
+    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("could not decode image")
+    return image
 
-        self.current_variant = "original"
-        self.params = {"binary": 128, "blur": 5, "sobel": 3}
 
-    def load_image(self, file_path):
-        img = cv2.imread(file_path)
-        if img is None:
-            self.set_warning("Failed to load image.")
-            return
-        self.image = img
-        self.compute_all()
-        self._refresh_all()
-        self.set_warning("Image loaded.")
+def encode_image(image: np.ndarray) -> bytes:
+    """Encode an ndarray (BGR or grayscale) as PNG bytes."""
+    ok, encoded = cv2.imencode(".png", image)
+    if not ok:
+        raise ValueError("could not encode image")
+    return encoded.tobytes()
 
-    def compute_all(self):
-        if self.image is None:
-            return
-        self.original_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
-        self.gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        t = self.params["binary"]
-        _, self.binary_image = cv2.threshold(self.gray_image, t, 255, cv2.THRESH_BINARY)
-        k = self.params["blur"]
+
+def apply_variant(image: np.ndarray, variant: str, params: dict | None = None) -> np.ndarray:
+    """Return a processed copy of `image` (BGR). `original` is a no-op."""
+    if variant == "original":
+        return image
+    if variant not in VARIANTS:
+        raise ValueError(f"unknown variant: {variant!r}")
+
+    p = {**DEFAULT_PARAMS, **(params or {})}
+
+    if variant == "gray":
+        return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    if variant == "binary":
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        _, out = cv2.threshold(gray, int(p["binary"]), 255, cv2.THRESH_BINARY)
+        return out
+
+    if variant == "blur":
+        k = int(p["blur"])
+        if k <= 0:
+            k = 1
         if k % 2 == 0:
             k += 1
-        self.blur_image = cv2.GaussianBlur(self.original_image, (k, k), 0)
-        ap = self.params["sobel"]
+        return cv2.GaussianBlur(image, (k, k), 0)
+
+    if variant == "sobel":
+        ap = int(p["sobel"])
         if ap not in (1, 3, 5):
             ap = 3
-        sx = cv2.Sobel(self.gray_image, cv2.CV_64F, 1, 0, ksize=ap)
-        sy = cv2.Sobel(self.gray_image, cv2.CV_64F, 0, 1, ksize=ap)
-        mag = cv2.magnitude(sx, sy)
-        self.sobel_image = cv2.convertScaleAbs(mag)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        sx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=ap)
+        sy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=ap)
+        return cv2.convertScaleAbs(cv2.magnitude(sx, sy))
 
-    def variant_image(self, name):
-        if name == "original":
-            return self.original_image
-        if name == "gray":
-            return self.gray_image
-        if name == "binary":
-            return self.binary_image
-        if name == "blur":
-            return self.blur_image
-        if name == "sobel":
-            return self.sobel_image
-        return self.original_image
-    
-    def select_variant(self, name):
-        self.current_variant = name
-        self.refresh_preview()
-
-    def set_warning(self, msg):
-        self.warning.config(text=msg)
-
-    def go_original(self):
-        self.select_variant("original")
-
-    def go_gray(self):
-        self.select_variant("gray")
-
-    def go_binary(self):
-        self.select_variant("binary")
-
+    raise ValueError(f"unknown variant: {variant!r}")

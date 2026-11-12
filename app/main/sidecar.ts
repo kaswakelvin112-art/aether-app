@@ -21,18 +21,42 @@ export interface SidecarInfo {
   message: string
 }
 
-function backendDir(): string {
-  return resolve(app.getAppPath(), '..', 'backend')
+function appRoot(): string {
+  // Dev: app.getAppPath() is <repo>/app, so the repo root is one level up.
+  // Packaged: revisit if electron-builder changes the on-disk layout.
+  return resolve(app.getAppPath(), '..')
 }
 
-function pythonExecutable(dir: string): string {
+function backendDir(): string {
+  return resolve(appRoot(), 'backend')
+}
+
+function venvPythonCandidates(): string[] {
   const isWin = process.platform === 'win32'
-  const venvPython = isWin
-    ? join(dir, '.venv', 'Scripts', 'python.exe')
-    : join(dir, '.venv', 'bin', 'python')
-  if (existsSync(venvPython)) return venvPython
-  console.warn(`${LOG_TAG} ⚠️ no venv python at ${venvPython}, falling back to system python`)
-  return isWin ? 'python' : 'python3'
+  const rel = isWin
+    ? join('.venv', 'Scripts', 'python.exe')
+    : join('.venv', 'bin', 'python')
+  const root = appRoot()
+  return [
+    resolve(root, 'backend', rel),
+    resolve(root, rel),
+    resolve(app.getAppPath(), rel)
+  ]
+}
+
+function pythonExecutable(): string {
+  const override = process.env['AETHER_PYTHON']?.trim()
+  if (override) return override
+
+  const candidates = venvPythonCandidates()
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+
+  console.warn(
+    `${LOG_TAG} ⚠️ no project venv found (looked in ${candidates.join(', ')}); falling back to system python`
+  )
+  return process.platform === 'win32' ? 'python' : 'python3'
 }
 
 class SidecarManager {
@@ -106,7 +130,7 @@ class SidecarManager {
     }
 
     const token = randomBytes(24).toString('hex')
-    const python = pythonExecutable(dir)
+    const python = pythonExecutable()
     console.log(`${LOG_TAG} ⏭️ starting ${python} ${script}`)
     this.publish({
       state: this.restarts > 0 ? 'restarting' : 'starting',

@@ -93,7 +93,11 @@ export default function App() {
           {/* Layer 1: <video>. Layer 2: transparent WebGL canvas (Phase 3). */}
           <div className="absolute inset-0 grid place-items-center">
             {source === 'Image' && (
-              <VariantImage src={mediaUrl ?? DEFAULT_IMAGE} variant={variant} />
+              <VariantImage
+                src={mediaUrl ?? DEFAULT_IMAGE}
+                variant={variant}
+                processImage={backend.processImage}
+              />
             )}
             {source === 'Video' && (
               <video

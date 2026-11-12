@@ -1,0 +1,6 @@
+# AETHER-3D backend sidecar dependencies.
+# Install into the project venv with:
+#   .venv/bin/pip install -r backend/requirements.txt
+numpy>=2.0
+opencv-python>=4.10
+websockets==17.4

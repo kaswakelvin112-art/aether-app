@@ -9,6 +9,7 @@ Contract with Electron:
     so no orphan Python process is left running.
 """
 import asyncio
+import base64
 import hmac
 import json
 import os
@@ -20,6 +21,8 @@ import time
 
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
+
+from cv.variants import VARIANTS, apply_variant, decode_image, encode_image
 
 LOG_TAG = "[AETHER:backend]"
 VERSION = "0.1.0"
@@ -42,6 +45,48 @@ async def send_json(ws, payload: dict) -> None:
     await ws.send(json.dumps(payload))
 
 
+def decode_data_url(value: str) -> bytes:
+    """Accept raw base64 or a data: URL and return the decoded bytes."""
+    if value.startswith("data:") and "," in value:
+        value = value.split(",", 1)[1]
+    return base64.b64decode(value, validate=True)
+
+
+async def on_process_image(ws, msg: dict) -> None:
+    req_id = msg.get("id")
+    variant = msg.get("variant")
+    image_value = msg.get("image")
+
+    if variant not in VARIANTS or not isinstance(image_value, str) or not image_value:
+        await send_json(ws, {
+            "type": "image_error",
+            "id": req_id,
+            "message": "invalid process-image request",
+        })
+        return
+
+    loop = asyncio.get_running_loop()
+    try:
+        raw = decode_data_url(image_value)
+        # cv2 releases the GIL, but keep the event loop responsive anyway.
+        image = await loop.run_in_executor(None, decode_image, raw)
+        processed = await loop.run_in_executor(None, apply_variant, image, variant)
+        encoded = await loop.run_in_executor(None, encode_image, processed)
+        await send_json(ws, {
+            "type": "image_result",
+            "id": req_id,
+            "variant": variant,
+            "image": base64.b64encode(encoded).decode("ascii"),
+        })
+    except Exception as exc:
+        log("err", f"process-image failed: {exc}")
+        await send_json(ws, {
+            "type": "image_error",
+            "id": req_id,
+            "message": str(exc),
+        })
+
+
 async def on_text(ws, raw: str) -> None:
     try:
         msg = json.loads(raw)
@@ -49,9 +94,15 @@ async def on_text(ws, raw: str) -> None:
         await send_json(ws, {"type": "error", "message": "invalid JSON"})
         return
 
+    if not isinstance(msg, dict):
+        await send_json(ws, {"type": "error", "message": "message must be a JSON object"})
+        return
+
     kind = msg.get("type")
     if kind == "ping":
         await send_json(ws, {"type": "pong", "t": msg.get("t"), "server_t": time.time() * 1000})
+    elif kind == "process-image":
+        await on_process_image(ws, msg)
     else:
         log("warn", f"unknown message type: {kind!r}")
         await send_json(ws, {"type": "error", "message": f"unknown type: {kind}"})
@@ -113,7 +164,9 @@ def start_parent_watchdog(loop: asyncio.AbstractEventLoop, stop: asyncio.Event) 
 
     def run() -> None:
         try:
-            while sys.stdin.buffer.read(1024):
+            # Raw read (not sys.stdin.buffer): a daemon thread blocked on the
+            # buffered reader trips a fatal lock error during interpreter shutdown.
+            while os.read(sys.stdin.fileno(), 1024):
                 pass
         except Exception:
             pass
