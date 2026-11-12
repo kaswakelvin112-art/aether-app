@@ -34,3 +34,31 @@ body {
   grid-template-rows: 1fr;
   opacity: 1;
 }
+
+/* Sci-fi scan overlay shown while a variant is processing. */
+.variant-scanner {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.variant-laser {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-hud), transparent);
+  box-shadow: 0 0 15px var(--color-hud);
+  animation: variant-scan-vertical 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes variant-scan-vertical {
+  from {
+    top: 0%;
+  }
+  to {
+    top: 100%;
+  }
+}

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import LeftSidebar, {Panel, type ImageVariant, type Source } from './components/leftSidebar'
 import VariantImage from './components/variantImage'
 import { useBackend, type LinkState } from './net/useBackend'
+import BottomPreview, { type Capture } from './components/bottomPreview'
 
 
 const DEFAULT_IMAGE = 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg'
@@ -19,6 +20,10 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [mediaUrl, setMediaUrl] = useState<string | null>(null)
   const [variant, setVariant] = useState<ImageVariant>('original')
+  const [currentImage, setCurrentImage] = useState<string | null>(null)
+  const [captures, setCaptures] = useState<Capture[]>([])
+  const [selectedCaptureId, setSelectedCaptureId] = useState<string | null>(null)
+  const [captureError, setCaptureError] = useState<string | null>(null)
 
   const backend = useBackend()
   const link = LINK_STYLE[backend.link]
@@ -35,6 +40,8 @@ export default function App() {
     setMediaUrl(file ? URL.createObjectURL(file) : null)
     setFile(file)
     setVariant('original')
+    setCurrentImage(null)
+    setSelectedCaptureId(null)
   }
 
   const handleSourceChange = (nextSource: Source) => {
@@ -42,7 +49,36 @@ export default function App() {
     setMediaUrl(null)
     setFile(null)
     setVariant('original')
+    setCurrentImage(null)
+    setSelectedCaptureId(null)
     setSource(nextSource)
+  }
+
+  const handleVariantChange = useCallback((nextVariant: ImageVariant) => {
+    setVariant(nextVariant)
+    setSelectedCaptureId(null)
+  }, [])
+
+  const handleCapture = async () => {
+    if (!currentImage) return
+
+    setCaptureError(null)
+    let snapshot = currentImage
+    if (!snapshot.startsWith('data:')) {
+      const response = await fetch(snapshot)
+      const blob = await response.blob()
+      snapshot = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('Unable to capture the current image.'))
+        reader.readAsDataURL(blob)
+      })
+    }
+
+    const capture = { id: crypto.randomUUID(), src: snapshot }
+    setCaptures((previous) => [...previous, capture])
+    setSelectedCaptureId(capture.id)
+    setCurrentImage(snapshot)
   }
 
   return (
@@ -82,7 +118,7 @@ export default function App() {
           onSourceChange={handleSourceChange}
           onFileChange={handleFileChange}
           variant={variant}
-          onVariantChange={setVariant}
+          onVariantChange={handleVariantChange}
         />
         
       </aside>
@@ -92,13 +128,16 @@ export default function App() {
         <section className="relative overflow-hidden bg-black">
           {/* Layer 1: <video>. Layer 2: transparent WebGL canvas (Phase 3). */}
           <div className="absolute inset-0 grid place-items-center">
-            {source === 'Image' && (
+            {source === 'Image' && selectedCaptureId !== null && currentImage ? (
+              <img src={currentImage} alt="Selected capture" className="max-h-full max-w-full object-contain" />
+            ) : source === 'Image' ? (
               <VariantImage
                 src={mediaUrl ?? DEFAULT_IMAGE}
                 variant={variant}
                 processImage={backend.processImage}
+                onDisplayedChange={setCurrentImage}
               />
-            )}
+            ) : null}
             {source === 'Video' && (
               <video
                 src={mediaUrl ?? DEFAULT_VIDEO}
@@ -124,7 +163,14 @@ export default function App() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[11px] uppercase tracking-[0.2em] text-hud-dim">Capture history</h2>
             <div className="flex gap-2">
-              <button className="rounded border border-hud px-3 py-1.5 text-xs text-hud hover:bg-hud/10">
+              <button
+                type="button"
+                onClick={() => void handleCapture().catch((reason) => {
+                  setCaptureError(reason instanceof Error ? reason.message : 'Unable to capture the current image.')
+                })}
+                disabled={!currentImage}
+                className="rounded border border-hud px-3 py-1.5 text-xs text-hud hover:bg-hud/10 disabled:cursor-not-allowed disabled:border-edge disabled:text-slate-600"
+              >
                 Capture
               </button>
               {['.PLY', '.OBJ', '.STL'].map((f) => (
@@ -138,12 +184,17 @@ export default function App() {
               ))}
             </div>
           </div>
-          <div className="grid flex-1 place-items-center rounded border border-dashed border-edge text-slate-600">
-            no captures yet
-          </div>
+          {captureError && <p className="mb-2 text-xs text-warn">{captureError}</p>}
+          <BottomPreview
+            captures={captures}
+            selectedCaptureId={selectedCaptureId}
+            onSelect={(capture) => {
+              setSelectedCaptureId(capture.id)
+              setCurrentImage(capture.src)
+            }}
+          />
         </section>
       </main>
     </div>
   )
 }
-
