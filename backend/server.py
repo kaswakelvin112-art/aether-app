@@ -22,7 +22,7 @@ import time
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 
-from cv.variants import VARIANTS, apply_variant, decode_image, encode_image
+from cv.variants import VARIANTS, apply_variant, analyze_image, decode_image, encode_image
 
 LOG_TAG = "[AETHER:backend]"
 VERSION = "0.1.0"
@@ -56,6 +56,9 @@ async def on_process_image(ws, msg: dict) -> None:
     req_id = msg.get("id")
     variant = msg.get("variant")
     image_value = msg.get("image")
+    params = msg.get("params")  # optional dict
+
+    log("ok", f"process-image request: variant={variant}, params={params}")
 
     if variant not in VARIANTS or not isinstance(image_value, str) or not image_value:
         await send_json(ws, {
@@ -70,7 +73,7 @@ async def on_process_image(ws, msg: dict) -> None:
         raw = decode_data_url(image_value)
         # cv2 releases the GIL, but keep the event loop responsive anyway.
         image = await loop.run_in_executor(None, decode_image, raw)
-        processed = await loop.run_in_executor(None, apply_variant, image, variant)
+        processed = await loop.run_in_executor(None, apply_variant, image, variant, params)
         encoded = await loop.run_in_executor(None, encode_image, processed)
         await send_json(ws, {
             "type": "image_result",
@@ -82,6 +85,37 @@ async def on_process_image(ws, msg: dict) -> None:
         log("err", f"process-image failed: {exc}")
         await send_json(ws, {
             "type": "image_error",
+            "id": req_id,
+            "message": str(exc),
+        })
+
+
+async def on_analyze_image(ws, msg: dict) -> None:
+    req_id = msg.get("id")
+    image_value = msg.get("image")
+
+    if not isinstance(image_value, str) or not image_value:
+        await send_json(ws, {
+            "type": "analyze_error",
+            "id": req_id,
+            "message": "invalid analyze-image request",
+        })
+        return
+
+    loop = asyncio.get_running_loop()
+    try:
+        raw = decode_data_url(image_value)
+        image = await loop.run_in_executor(None, decode_image, raw)
+        params = await loop.run_in_executor(None, analyze_image, image)
+        await send_json(ws, {
+            "type": "analyze_result",
+            "id": req_id,
+            "params": params,
+        })
+    except Exception as exc:
+        log("err", f"analyze-image failed: {exc}")
+        await send_json(ws, {
+            "type": "analyze_error",
             "id": req_id,
             "message": str(exc),
         })
@@ -103,6 +137,8 @@ async def on_text(ws, raw: str) -> None:
         await send_json(ws, {"type": "pong", "t": msg.get("t"), "server_t": time.time() * 1000})
     elif kind == "process-image":
         await on_process_image(ws, msg)
+    elif kind == "analyze-image":
+        await on_analyze_image(ws, msg)
     else:
         log("warn", f"unknown message type: {kind!r}")
         await send_json(ws, {"type": "error", "message": f"unknown type: {kind}"})

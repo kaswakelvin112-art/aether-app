@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { VariantParams } from '../components/leftSidebar'
 
 export type LinkState = 'waiting' | 'connecting' | 'connected' | 'disconnected'
 
-export type ProcessImage = (imageBase64: string, variant: string) => Promise<string>
+export type ProcessImage = (imageBase64: string, variant: string, params?: Record<string, number>) => Promise<string>
+
+export type AnalyzeImage = (imageBase64: string) => Promise<VariantParams>
 
 export interface BackendStatus {
   link: LinkState
@@ -10,6 +13,7 @@ export interface BackendStatus {
   latencyMs: number | null
   backendVersion: string | null
   processImage: ProcessImage
+  analyzeImage: AnalyzeImage
 }
 
 const LOG_TAG = '[AETHER:net]'
@@ -24,6 +28,7 @@ interface ServerMessage {
   version?: string
   image?: string
   message?: string
+  params?: VariantParams
 }
 
 interface PendingRequest {
@@ -56,13 +61,14 @@ export function useBackend(): BackendStatus {
     pendingRef.current.clear()
   }, [])
 
-  const processImage = useCallback(async (imageBase64: string, variant: string): Promise<string> => {
+  const processImage = useCallback(async (imageBase64: string, variant: string, params?: Record<string, number>): Promise<string> => {
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       throw new Error('backend is not connected')
     }
 
     const id = nextRequestId()
+    console.log('[useBackend] Sending process-image with params:', params)
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (pendingRef.current.delete(id)) {
@@ -70,7 +76,33 @@ export function useBackend(): BackendStatus {
         }
       }, PROCESS_TIMEOUT_MS)
       pendingRef.current.set(id, { resolve, reject, timer })
-      socket.send(JSON.stringify({ type: 'process-image', id, image: imageBase64, variant }))
+      socket.send(JSON.stringify({ type: 'process-image', id, image: imageBase64, variant, params }))
+    })
+  }, [])
+
+  const analyzeImage = useCallback(async (imageBase64: string): Promise<VariantParams> => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      throw new Error('backend is not connected')
+    }
+
+    const id = nextRequestId()
+    console.log('[useBackend] Sending analyze-image, id:', id)
+    return new Promise<VariantParams>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (pendingRef.current.delete(id)) {
+          reject(new Error('analyze timed out'))
+        }
+      }, 10_000)
+      pendingRef.current.set(id, { 
+        resolve: (params: string) => {
+          console.log('[useBackend] analyze resolve raw:', params)
+          resolve(JSON.parse(params))
+        }, 
+        reject, 
+        timer 
+      })
+      socket.send(JSON.stringify({ type: 'analyze-image', id, image: imageBase64 }))
     })
   }, [])
 
@@ -153,6 +185,25 @@ export function useBackend(): BackendStatus {
           pendingRef.current.delete(msg.id)
           clearTimeout(pending.timer)
           pending.reject(new Error(msg.message ?? 'image processing failed'))
+        } else if (msg.type === 'analyze_result' && typeof msg.id === 'string') {
+          const pending = pendingRef.current.get(msg.id)
+          if (!pending) return
+          pendingRef.current.delete(msg.id)
+          clearTimeout(pending.timer)
+          console.log('[useBackend] Received analyze_result:', msg.params)
+          if (msg.params) {
+            // Resolve with JSON string of params
+            pending.resolve(JSON.stringify(msg.params))
+          } else {
+            pending.reject(new Error('analyze result missing params'))
+          }
+        } else if (msg.type === 'analyze_error' && typeof msg.id === 'string') {
+          const pending = pendingRef.current.get(msg.id)
+          if (!pending) return
+          pendingRef.current.delete(msg.id)
+          clearTimeout(pending.timer)
+          console.warn('[useBackend] Received analyze_error:', msg.message)
+          pending.reject(new Error(msg.message ?? 'analyze failed'))
         }
       }
 
@@ -185,5 +236,5 @@ export function useBackend(): BackendStatus {
     }
   }, [state, port, token, rejectPending])
 
-  return { link, sidecar, latencyMs, backendVersion, processImage }
+  return { link, sidecar, latencyMs, backendVersion, processImage, analyzeImage }
 }

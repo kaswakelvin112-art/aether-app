@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ImageVariant } from './leftSidebar'
+import type { ImageVariant, VariantParams } from './leftSidebar'
 import type { ProcessImage } from '../net/useBackend'
 
 type VariantImageProps = {
@@ -7,9 +7,10 @@ type VariantImageProps = {
   variant: ImageVariant
   processImage: ProcessImage
   onDisplayedChange: (src: string) => void
+  variantParams: VariantParams
 }
 
-export default function VariantImage({ src, variant, processImage, onDisplayedChange }: VariantImageProps) {
+export default function VariantImage({ src, variant, processImage, onDisplayedChange, variantParams }: VariantImageProps) {
   // What is currently on screen: null means the untouched source image.
   const [displayed, setDisplayed] = useState<string | null>(null)
   const [displayedVariant, setDisplayedVariant] = useState<ImageVariant>('original')
@@ -33,6 +34,7 @@ export default function VariantImage({ src, variant, processImage, onDisplayedCh
 
     const process = async () => {
       try {
+        console.log('[VariantImage] Processing with params:', variantParams)
         const sourceResponse = await fetch(src, { signal: controller.signal })
         const sourceBlob = await sourceResponse.blob()
         const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -44,7 +46,8 @@ export default function VariantImage({ src, variant, processImage, onDisplayedCh
 
         // The sidecar accepts raw base64; strip the data: prefix if present.
         const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
-        const result = await processImage(base64, variant)
+        const result = await processImage(base64, variant, variantParams)
+        console.log('[VariantImage] Got result, length:', result.length)
         if (controller.signal.aborted) return
         setDisplayed(`data:image/png;base64,${result}`)
         setDisplayedVariant(variant)
@@ -61,7 +64,7 @@ export default function VariantImage({ src, variant, processImage, onDisplayedCh
 
     void process()
     return () => controller.abort()
-  }, [src, variant, processImage, onDisplayedChange])
+  }, [src, variant, variantParams, processImage, onDisplayedChange])
 
   return (
     <div className="relative grid h-full w-full place-items-center">

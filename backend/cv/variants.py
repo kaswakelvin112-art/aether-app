@@ -39,6 +39,7 @@ def apply_variant(image: np.ndarray, variant: str, params: dict | None = None) -
         raise ValueError(f"unknown variant: {variant!r}")
 
     p = {**DEFAULT_PARAMS, **(params or {})}
+    print(f"[Variants] apply_variant: variant={variant}, merged_params={p}")
 
     if variant == "gray":
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -46,10 +47,12 @@ def apply_variant(image: np.ndarray, variant: str, params: dict | None = None) -
     if variant == "binary":
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         _, out = cv2.threshold(gray, int(p["binary"]), 255, cv2.THRESH_BINARY)
+        print(f"[Variants] binary threshold: {p['binary']}")
         return out
 
     if variant == "blur":
         k = int(p["blur"])
+        print(f"[Variants] blur kernel size: {k}")
         if k <= 0:
             k = 1
         if k % 2 == 0:
@@ -58,7 +61,8 @@ def apply_variant(image: np.ndarray, variant: str, params: dict | None = None) -
 
     if variant == "sobel":
         ap = int(p["sobel"])
-        if ap not in (1, 3, 5):
+        print(f"[Variants] sobel aperture size: {ap}")
+        if ap not in (1, 3, 5, 7):
             ap = 3
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         sx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=ap)
@@ -66,3 +70,48 @@ def apply_variant(image: np.ndarray, variant: str, params: dict | None = None) -
         return cv2.convertScaleAbs(cv2.magnitude(sx, sy))
 
     raise ValueError(f"unknown variant: {variant!r}")
+
+
+def analyze_image(image: np.ndarray) -> dict:
+    """Compute optimal initial parameters for the image."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    # Binary: Otsu's optimal threshold
+    otsu_thresh, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # Blur: Estimate from Laplacian variance (sharpness)
+    # Higher variance = sharper = less blur needed
+    laplacian_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    # Map variance to kernel size (heuristic)
+    if laplacian_var < 100:
+        blur_k = 9   # Very blurry
+    elif laplacian_var < 500:
+        blur_k = 7
+    elif laplacian_var < 1000:
+        blur_k = 5
+    elif laplacian_var < 2000:
+        blur_k = 3
+    else:
+        blur_k = 1   # Sharp
+    
+    # Edge density heuristic using Otsu-derived Canny intensity bounds.
+    # Keep the lower bound sensitive enough to retain weaker edges.
+    otsu_value = int(round(otsu_thresh))
+    canny_upper = max(10, min(255, otsu_value))
+    canny_lower = max(5, int(round(canny_upper * 0.33)))
+    edges = cv2.Canny(gray, canny_lower, canny_upper)
+    edge_density = float(np.count_nonzero(edges)) / float(edges.size)
+    if edge_density >= 0.3:
+        sobel_k = 1
+    elif edge_density >= 0.15:
+        sobel_k = 5
+    else:
+        sobel_k = 3
+    
+    params = {
+        "binary": int(otsu_thresh),
+        "blur": int(blur_k),
+        "sobel": int(sobel_k),
+    }
+    print(f"[Variants] analyze_image: {params}")
+    return params

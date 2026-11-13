@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import LeftSidebar, {Panel, type ImageVariant, type Source } from './components/leftSidebar'
+import LeftSidebar, { Panel, type ImageVariant, type Source, type VariantParams } from './components/leftSidebar'
 import VariantImage from './components/variantImage'
 import { useBackend, type LinkState } from './net/useBackend'
 import BottomPreview, { type Capture } from './components/bottomPreview'
@@ -20,6 +20,7 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [mediaUrl, setMediaUrl] = useState<string | null>(null)
   const [variant, setVariant] = useState<ImageVariant>('original')
+  const [variantParams, setVariantParams] = useState<VariantParams>({ binary: 128, blur: 5, sobel: 3 })
   const [currentImage, setCurrentImage] = useState<string | null>(null)
   const [captures, setCaptures] = useState<Capture[]>([])
   const [selectedCaptureId, setSelectedCaptureId] = useState<string | null>(null)
@@ -40,8 +41,27 @@ export default function App() {
     setMediaUrl(file ? URL.createObjectURL(file) : null)
     setFile(file)
     setVariant('original')
+    setVariantParams({ binary: 128, blur: 5, sobel: 3 })
     setCurrentImage(null)
     setSelectedCaptureId(null)
+
+    if (file) {
+      // Analyze image for optimal initial parameters
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
+          const base64 = String(reader.result).split(',')[1]
+          console.log('[App] Sending analyze request...')
+          const params = await backend.analyzeImage(base64)
+          console.log('[App] Got analyze params:', params)
+          setVariantParams(params)
+          console.log('[App] setVariantParams called')
+        } catch (err) {
+          console.warn('[App] Analyze failed, using defaults:', err)
+        }
+      }
+      reader.readAsDataURL(file)
+    }
   }
 
   const handleSourceChange = (nextSource: Source) => {
@@ -49,6 +69,7 @@ export default function App() {
     setMediaUrl(null)
     setFile(null)
     setVariant('original')
+    setVariantParams({ binary: 128, blur: 5, sobel: 3 })
     setCurrentImage(null)
     setSelectedCaptureId(null)
     setSource(nextSource)
@@ -119,6 +140,8 @@ export default function App() {
           onFileChange={handleFileChange}
           variant={variant}
           onVariantChange={handleVariantChange}
+          variantParams={variantParams}
+          onVariantParamsChange={setVariantParams}
         />
         
       </aside>
@@ -136,6 +159,7 @@ export default function App() {
                 variant={variant}
                 processImage={backend.processImage}
                 onDisplayedChange={setCurrentImage}
+                variantParams={variantParams}
               />
             ) : null}
             {source === 'Video' && (
